@@ -1,0 +1,193 @@
+clear;close all
+% Restore factory-default MATLAB path for this session
+restoredefaultpath
+addpath('c:/users/rodi/Github/maneuvers/processing26/utils')
+addpath('c:/users/rodi/Github/kingair-Sys26/Sys26/get_vars/utilities')
+addpath('c:/users/rodi/Github/kingair-Sys26/Sys26/get_vars/mfiles858')
+addpath('c:/users/rodi/Github/kingair-Sys26/ARRfiles')
+
+close all
+nnn=0;
+;
+PROJ = 'test26'
+FLTs = ["20260408a_arr.c10.nc" "20260408b_arr.c10.nc"]
+dataDir = fullfile('P:/MATLAB-DATA2/kingair_data/',PROJ,'work');
+file = fullfile(dataDir,FLTs{1});
+irate = get_irate(file,'TASX');
+orate = 10;
+r = orate/irate;
+% these are for 10 Hz
+M.flt(1,1).kk = round([38638*r:50369*r]); %Rodi
+M.flt(1,2).kk = round([75808*r:86897*r]); %Rodi
+M.flt(1,3).kk = round([56137*r:57087*r]); % betas S/L
+M.flt(1,4).kk = round([91029*r:91794*r]); % betas S/L
+
+M.flt(2,1).kk = round([22720*r:34908*r]); %Rodi
+M.flt(2,2).kk = round([37567*r:38325*r]); % betas S/L
+M.flt(2,3).kk = round([42614*r:43668*r]); % betas S/L
+M.flt(2,4).kk = [];
+
+[nn,mm] = size(M.flt);
+
+% The *1 variables are the concatinated series
+alpha1 = [];
+beta1 = [];
+q_ship1 = [];
+q_boom1 = [];
+zhyps_ship1 = [];
+zhyps_boom1 = [];
+zalt1 = [];
+Mnum_ship1 = [];
+Mnum_boom1 = [];
+DelPship1 = [];
+DelPboom1 = [];
+ShipYhat1 = [];
+BoomYhat1 = [];
+
+bb = 0;
+iiis0=1; % this is to start the accumulation indices of maneuver sections
+kkks0=nan(nn*mm,1); % this  will be where the segment indices are saved
+kkks1=nan(nn*mm,1);
+
+C=phycon;
+PRESSURE = 'boom';
+
+for jj = 1:numel(FLTs)
+    file = fullfile(dataDir,FLTs(jj));
+    % For string array
+    lastUnd = cellfun(@(s) find(s=='_',1,'last'), cellstr(file));
+    rawfile = [ extractBefore(file, lastUnd) +  "_raw.nc"]; 
+
+    ARM = ncreadatt(file,'/','AWinds.MomentArm');
+
+    % raw measurements
+    irate = get_irate(rawfile,'AALT')
+    blurf = get_data(rawfile,'AALT',[],irate,orate); zalt=blurf(:);
+    blurf = get_data(rawfile,'PSA',[],1000,orate); PSA=blurf(:);
+    blurf = get_data(rawfile,'PSB',[],1000,orate); PSB=blurf(:);
+    blurf = get_data(rawfile,'TROSE',[],1000,orate); TROSE=blurf(:) +C.Tzero;
+    blurf = get_data(rawfile,'PTB',[],1000,orate); PTB=blurf(:);
+    blurf = get_data(rawfile,'DPA',[],1000,orate); DPA=blurf(:);
+    blurf = get_data(rawfile,'DPB',[],1000,orate); DPB=blurf(:);
+    blurf = get_data(rawfile,'DPR',[],1000,orate); DPR=blurf(:);
+    blurf = get_data(rawfile,'DP1',[],1000,orate); DP1=blurf(:);
+    blurf = get_data(rawfile,'DP2',[],1000,orate); DP2=blurf(:);
+    blurf = get_data(rawfile,'DPN',[],1000,orate); DPN=blurf(:);
+
+    PSAoffset = mean(PSA(2000:5000)-PSB(2000:5000));
+    PSA = PSA - PSAoffset;
+    DP1 = DP1 + PSAoffset;
+
+    [MM, MMboom, MMship] = getDerivedVariablesR858( ...
+            DPB, DPA, DPR, DPN, DP1, DP2, PSA, PSB);
+
+    mr = zeros(size(DPA));
+
+    ta = MM.ta_beta;
+    tb = MM.tb_beta;
+    alpha = atan(ta);
+    beta = atan(tb);
+    
+    q_ship =  MMship.q_beta;
+    q_boom =  MMboom.q_beta;
+    
+    [Mnum_ship,TEMPK_ship, TAS_ship]  = calc_mach( ...
+        MMship.q_beta, PSA, TROSE, 0.97);
+    [Mnum_boom,TEMPK_boom, TAS_boom]  = calc_mach( ...
+        MMboom.q_beta, PSB, TROSE, 0.97);
+
+    zhyps_ship = ZHypsometric(zalt(1),PSA,TEMPK_ship);
+    zhyps_boom = ZHypsometric(zalt(1),PSB,TEMPK_boom);
+
+    rho_ship = PSA.*100./(C.Rd .* TEMPK_ship);
+    rho_boom = PSB.*100./(C.Rd .* TEMPK_boom);
+
+    for ii=1:mm;
+        clear kk
+        ss = sprintf("kk = M.flt(%i,%i).kk;",jj,ii);
+        eval(ss);
+        if isempty(kk)
+            continue
+        end
+        pz_ship = PSA(kk(1)) - cumsum( rho_ship(kk) .*C.g0 .* gradient(zalt(kk)) /100 );
+        pz_boom = PSB(kk(1)) - cumsum( rho_boom(kk) .*C.g0 .* gradient(zalt(kk)) /100 );
+        x1 = detrend( PSA(kk) - pz_ship, 'constant' );
+        x2 = Mnum_ship(kk);
+        x3 = q_ship(kk);
+        x4 = alpha(kk);
+        x5 = beta(kk);
+        X = [x1,x2,x3,x4,x5];
+        varNames = ["x1","x2","x3","x4","x5"];
+        [lm,yhat_ship,BETA, R2,T] = do_regress(X,varNames);
+        x1 = detrend( PSB(kk) - pz_boom, 'constant' );
+        x2 = Mnum_boom(kk);
+        x3 = q_boom(kk);
+        X = [x1,x2,x3,x4,x5];
+        [lm,yhat_boom,BETA, R2,T] = do_regress(X,varNames);
+        
+        ShipYhat1       = [ShipYhat1;yhat_ship - x1];
+        BoomYhat1       = [BoomYhat1;yhat_boom - x1];
+        alpha1          = [alpha1;alpha(kk)];
+        beta1           = [beta1;beta(kk)];
+        q_ship1         = [q_ship1;q_ship(kk)];
+        q_boom1         = [q_boom1;q_boom(kk)];
+        zhyps_ship1     = [zhyps_ship1;zhyps_ship(kk)];
+        zhyps_boom1     = [zhyps_boom1;zhyps_boom(kk)];
+        zalt1           = [zalt1;zalt(kk)];
+        Mnum_ship1      = [Mnum_ship1;Mnum_ship(kk)];
+        Mnum_boom1      = [Mnum_boom1;Mnum_boom(kk)];
+        DelPship1       = [DelPship1;detrend( PSA(kk) - pz_ship, 'constant' )];
+        DelPboom1       = [DelPboom1;detrend( PSB(kk) - pz_boom, 'constant' )];
+      
+     end
+end
+% Now process the concatenated data
+alpha = alpha1;
+beta = beta1;
+q_ship = q_ship1;
+q_boom = q_boom1;
+zhyps_ship = zhyps_ship1;
+zhyps_boom = zhyps_boom1;
+zalt = zalt1;
+Mnum_ship = Mnum_ship1;
+Mnum_boom = Mnum_boom1;
+DelPship = DelPship1;
+DelPboom = DelPboom1;
+
+x1s = DelPship;
+x2s = Mnum_ship;
+x3s = q_ship;
+x4s =  alpha;
+x5s =  beta;
+X = [x1s,x2s,x3s,x4s,x5s];
+variableNames = ["PCOR","Mach","q","alpha","beta"];
+[lm_ship,yhat_ship,beta_ship, R2,Tship] = do_regress(X,variableNames);
+figure(1)
+plot(x2s,yhat_ship,'.');
+xlabel('data')
+ylabel('pcor_ship')
+grid
+
+x1b = DelPboom;
+x2b = Mnum_boom;
+x3b = q_boom;
+x4b = alpha;
+x5b = beta;
+X = [x1b,x2b,x3b,x4b,x5b];
+variableNames = ["PCOR","Mach","q","alpha","beta"];
+[lm_boom,yhat_boom,beta_boom, R2,boom] = do_regress(X,variableNames);
+figure(2)
+plot(x2s,yhat_boom,'.');
+xlabel('data')
+ylabel('pcor_boom')
+grid
+
+figure(3)
+plot(q_ship,yhat_ship,'.r',q_boom,yhat_boom,'.g')
+grid
+
+
+[beta_ship,beta_boom]'
+
+return
+
