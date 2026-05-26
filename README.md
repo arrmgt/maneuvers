@@ -14,5 +14,9 @@ edit do10process1.m
 % All files/segments will be concatenated
 NOTES:
 1.  Process runs twice for ship static and boom static measurements, respectively.  Plots automatically be generated for each.
+2.  Global attributes (AWINDS.*) are in the following files:
+    maneuvers_BOOM.txt (uses BOOM static)
+	maneuvers_SHIP.txt (uses SHIP static)
+3.  The *xlsx spreadsheets have tabulated results and confidence limits.
 ```
 

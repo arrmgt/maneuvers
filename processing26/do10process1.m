@@ -4,6 +4,7 @@ addpath('utils');
 
 nnn=0;
 ;
+datadir = 'P:/MATLAB-DATA2/kingair_data/';
 FLTs = ["20260408a_arrWork.c10.nc" "20260408b_arrWork.c10.nc"];
 DATE = extractBefore(FLTs{1},'_');
 s1=extractAfter(FLTs{1},'.c');
@@ -71,7 +72,7 @@ for pppp=1:numel(PRES)
     PRESSURE = PRES(pppp);
 
 for jj = 1:numel(FLTs)
-    dataDir = fullfile('P:/MATLAB-DATA2/kingair_data/',PROJ,'work');
+    dataDir = fullfile(datadir,PROJ,'work');
     arcFile = fullfile(dataDir,FLTs(jj));
     lastUnd = cellfun(@(s) find(s=='_',1,'last'), cellstr(arcFile));
     rawFile = [ extractBefore(arcFile, lastUnd) +  "_raw.nc"]; 
@@ -121,7 +122,7 @@ for jj = 1:numel(FLTs)
     
     %%%%%%%%%% Maneuver results
     PSfactor        = ncreadatt(arcFile,'/','AWinds.PStaticOffset'); 
-    PSfactor = 0;
+    PSfactor = 0; % Uncomment after revising AWINDS* header info to test
     boom_pcor = boom_pcor + PSfactor;
     ship_pcor = ship_pcor + PSfactor;
 
@@ -400,8 +401,8 @@ grid
 ss=sprintf('figs/Boxplot-factors-%s-PS.jpg',PRESSURE);
 saveas(gcf,ss,'jpg')
 
-cols = {'pit_offset' 'roll_offset' 'alpha_factor1' ...
-    'alpha_factor2' 'beta_factor1' 'beta_factor2' 'head_offset' 'PS_fact'};
+cols = {'roll_offset' 'pitch_offset' 'head_offset' 'alpha_factor1' ...
+    'alpha_factor2' 'beta_factor1' 'beta_factor2' 'PS_fact'};
 cols1 = strrep(cols, '_','\_');
 ii = contains(cols,'offset')
 facts = ii;
@@ -419,7 +420,7 @@ saveas(gcf,ss,'jpg')
 
 % Write out results 
 fid=fopen(["./maneuvers_" + PRESSURE + ".txt"],'w')
-fprintf(fid,                      'AWinds.Maneuver_date = 20260408');
+fprintf(fid,                'AWinds.Maneuver_date= %s;\n','20260408');
 fprintf(fid,            'AWinds.RollOffsetRadians= %g;\n',Params(1));
 fprintf(fid,           'AWinds.PitchOffsetRadians= %g;\n',Params(2));
 fprintf(fid,            'AWinds.HeadOffsetRadians= %g;\n',Params(3));
