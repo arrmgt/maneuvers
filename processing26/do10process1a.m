@@ -47,17 +47,16 @@ tas1=[];
 alpha1=[];
 beta1=[];
 temp1=[];
-tempm1=[];
 pmb1=[];
 psm1=[];
-pkor1=[];
+pcorc1=[];
 ptb1=[];
-dpn1=[];
-
-dp1m1=[];
+dp1_1=[];
 dpa1=[];
 dpb1=[];
 dpr1=[];
+dpn1=[];
+trose1=[];
 dp11=[];
 roll1=[];
 pitch1=[];
@@ -73,7 +72,6 @@ lata1=[];
 longa1=[];
 ARM1=[];
 q_impact1 = [];
-mr = [];
 
 bb = 0;
 iiis0=1; % this is to start the accumulation indices of maneuver sections
@@ -83,8 +81,8 @@ kkks1=nan(nn*mm,1);
 C=phycon();
 delete figs/*.jpg
 PRES = ["SHIP" "BOOM"];
-PRES = ["SHIP"];
-for pppp=1:numel(PRES)
+%%%for pppp=1:numel(PRES)
+for pppp=1 % only SHIP for now
     PRESSURE = PRES(pppp);
 
 for jj = 1:numel(FLTs)
@@ -98,8 +96,8 @@ for jj = 1:numel(FLTs)
     % Get the data and recalibrate to 202624* raw files;
     X.RawPath='e:/MATLAB-DATA2/kingair_data/test26/work/20260701_raw.nc';
     RAWNAMES = ["PSA" "PSB" "TROSE" "PTB" "DPA" ...
-    "DPB" "DPR" "DP1" "DP2" "DPN" "PTB" "TROSE"];  
-    TEST = true 
+    "DPB" "DPR" "DP1" "DP2" "DPN" "PTB" "TROSE" "AALT"];  
+    TEST = false 
     if TEST
         [filepath,name,ext] = fileparts(X.RawPath);
         rawFile1 = fullfile(filepath,["20260701_raw" + ext]);
@@ -107,14 +105,8 @@ for jj = 1:numel(FLTs)
   
     for i=1:numel(RAWNAMES)
         jrate = get_irate(rawFile,RAWNAMES(i));
-        try
         x = get_data(rawFile,RAWNAMES(i),[],jrate,orate);
-        catch ME
-            RAWNAMES(i)
-            catchME(ME)
-        end
-
-        if TEST
+        if TEST & ~contains(RAWNAMES(i),'AALT')
             c0 = ncreadatt(rawFile, RAWNAMES(i),"CalibrationCoefficients");
             c1 = ncreadatt(rawFile1,RAWNAMES(i),"CalibrationCoefficients");
             V = (x - c0(1)) ./ c0(2);
@@ -124,15 +116,74 @@ for jj = 1:numel(FLTs)
         end
         eval(sprintf("%s = y;",RAWNAMES(i)));
     end
-    jrate = get_irate(rawFile,'AALT')
-    blurf = get_data(rawFile,'AALT' ,[],jrate,orate); Zgps=blurf(:);
-    TROSEK = TROSE + C.Tzero;
-    TDPK = -40.*ones(size(DPA)) + C.Tzero;
+    TROSE = TROSE + 273.15;
+    Zgps = AALT;
+
+   
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    %%%%%%%%%% Get static pressure corrections
+    %%%%%%%%%%    and remove outliers
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    % Get fcoef from 2005 trailing cone calibration flight
+    [ship_pcor,ship_fcoef] = cone_pcor(DP1,DPB,DPA,DPR,PSA);
+    %  Assume PSB-boom_pcor = PSA-ship_pcor, and estimate boom_pcor.
+    boom_pcor       = PSB - PSA + ship_pcor;
+    kk=find(DP1>10 & DP1<85 & DP2>10 & DP2<85);
+    boom_pcor       = interp1(kk,boom_pcor(kk) ,[1:numel(DPA)]','linear');
+    ship_pcor       = interp1(kk,ship_pcor(kk) ,[1:numel(DPA)]','linear');
+    ship_fcoef      = interp1(kk,ship_fcoef(kk),[1:numel(DPA)]','linear');
+    ship_pcor       = setOutPoints(kk,ship_pcor);
+    boom_pcor       = setOutPoints(kk,boom_pcor);
+    ship_fcoef      = setOutPoints(kk,ship_fcoef);
+    
+    %%%%%%%%%% Maneuver results
+    PSfactor        = ncreadatt(arcFile,'/','AWinds.PStaticOffset'); 
+    PSfactor = 0; % Uncomment after revising AWINDS* header info to test
+    boom_pcor = boom_pcor + PSfactor;
+    ship_pcor = ship_pcor + PSfactor;
+
+    TDPK = -40*ones(size(DP1)) +  C.Tzero;
+    
+    switch PRESSURE
+        case 'SHIP'
+            dp1         = DP1; %DP1 + ship_pcor;
+            psm         = PSA;
+            pmb         = psm - ship_pcor;
+            q_impact    = solve858(dp1, DPA, DPB, 'dpr', DPR);
+            pTotal      = q_impact + pmb;
+            r           = 0.97; % recovery coefficient for Temp
+            trose       = TROSE;
+            ADat        = airdata(pmb, pTotal, TROSE, r, TDPK ...
+                            , "Z_gps", Zgps); 
+        case 'BOOM'
+            dp1         = DP2; %DP2 + boom_pcor;
+            psm         = PSB;
+            pmb         = psm - ship_pcor;
+            trose       = TROSE;
+            q_impact    = solve858(DP2, DPA, DPB, 'dpr', DPR);
+            pTotal      = q_impact + pmb;
+            r           = 0.97;
+            ADat        = airdata(pmb, pTotal, TROSE, r, TDPK ...
+                            , "Z_gps", Zgps); 
+    end
+    tas     = ADat.TAS;
+    temp    = ADat.Ts;
+    alpha   = atan(tanAlpha(DPA,DPB,DPR));
+    beta    = atan(tanBeta(DPB,DPR));
+    ptb     = PTB;
+    dpa     = DPA;
+    dpb     = DPB;
+    dpr     = DPR;
+    dpn     = DPN;
+    trose   = TROSE;
+    ias     = ADat.Vi;
+    mr      = zeros(size(dpr));
+    pcorc   = zeros(size(dpr));
    
     % mixing ratio wasn't always archived -- but set it to zero for
     % now.
     if(numel(mr)<=1)
-        mr=zeros(size(TROSE));
+        mr=zeros(size(tas));
     end
     
     npitch1=[];npitch2=[];npitch3=[];
@@ -186,68 +237,11 @@ for jj = 1:numel(FLTs)
         if isempty(kk)
             continue
         end
-   
+    
         % save indices for this flight and run the regression
         %  to find the Params individually for the flights.
         KKKS0=1;
         KKKS1=numel(kk);
-
-        % Calculate pcor for the leg
-        names  = {'PTB','PSX','DPX','DPA','DPB','DPR','DPN', 'TROSEK', 'TDPK', 'mr'};
-        switch PRESSURE
-            case 'SHIP'
-                values = { PTB,  PSA, DP1, DPA, DPB, DPR, DPN, TROSEK, TDPK, mr};
-            case 'BOOM'
-                values = { PTB,  PSB, DP2, DPA, DPB, DPR, DPN, TROSEK, TDPK, mr};
-        end
-        DATA0 = cell2struct(values, names, 2); % All the data in a flight
-        fn = fieldnames(DATA0);
-        DATA = struct(); % just indices kk
-        for i = 1:numel(fn)
-            DATA.(fn{i}) = DATA0.(fn{i})(kk);
-        end
-        % Compute fcoef and pcor
-        [pcorc0,fcoef0,betaf0,betaf] = do_fcalc0(DATA,PRESSURE,'Plots',false);
-        [~,~,pcorc,fcoef] = fcalc(betaf,DATA0);
-        [pcorc,fcoef]=cone_pcor(DP1,DPB,DPA,DPR,PSA);
-
-        switch PRESSURE
-            case 'SHIP'
-                dp1m        = DATA0.DPX;
-                dp1         = dp1m + pcorc;
-                psm         = DATA0.PSX;
-                pmb         = psm - pcorc;
-                ptb         = dp1m + psm;
-                dpn         = DPN;
-                tempm       = TROSEK;
-                q_impact    = solve858(dp1, DPA, DPB, 'dpr', DPR);
-                pTotal      = q_impact + pmb;
-                r           = 0.97; % recovery coefficient for Temp
-                ADat        = airdata(pmb, pTotal, tempm, r, TDPK);
-            case 'BOOM'
-                dp1m        = DP2;
-                dp1         = dp1m + pcorc;
-                psm         = PSB;
-                pmb         = psm - pcorc;
-                ptb         = dp1m + psm;
-                dpn         = DPN;
-                tempm       = TROSEK;
-                q_impact    = solve858(dp1, DPA, DPB, 'dpr', DPR);
-                pTotal      = q_impact + pmb;
-                r           = 0.97;
-                ADat        = airdata(pmb, pTotal, tempm, r, DATA.TDPK) 
-        end
-        tas     = ADat.TAS;
-        temp    = ADat.Ts;
-        alpha   = atan(tanAlpha(DPA,DPB,DPR));
-        beta    = atan(tanBeta(DPB,DPR));
-        dpa     = DPA;
-        dpb     = DPB;
-        dpr     = DPR;
-        ias     = ADat.Vi;
-        mr      = zeros(size(dpr));
-        pcorc   = zeros(size(dpr));
-
         [Params,fu,fv,fw,mag,dir,resid,jacobian,CI]= ...
         do_fits0(KKKS0,KKKS1,dp1(kk),dpb(kk),dpa(kk),dpr(kk),q_impact(kk), ...
             temp(kk),tas(kk),pmb(kk),mr(kk),alpha(kk),beta(kk), ...
@@ -269,21 +263,20 @@ for jj = 1:numel(FLTs)
         structManeuvers(nnn,1).CIlow=CI(:,1)';
         structManeuvers(nnn,1).CIhi=CI(:,2)';
     
-        ptb1=[ptb1;ptb(kk)];
-        psm1=[psm1;psm(kk)];
-        dp1m1=[dp1m1;dp1m(kk)];
+        ptb1 = [ptb1;ptb(kk)];
+        dp1_1=[dp1_1;dp1(kk)];
         alpha1=[alpha1;alpha(kk)];
         beta1=[beta1;beta(kk)];
         temp1=[temp1;temp(kk)];
-        tempm1=[tempm1;tempm(kk)];
         tas1=[tas1;tas(kk)];
         dpa1=[dpa1;dpa(kk)];
         dpb1=[dpb1;dpb(kk)];
         dpr1=[dpr1;dpr(kk)];
         dpn1=[dpn1;dpn(kk)];
-        dp11=[dp11;dp1(kk)];
+        trose1 = [trose1;trose(kk)];
+        psm1 = [psm1;psm(kk)];
         pmb1=[pmb1;pmb(kk)];
-        pkor1=[pkor1;pcorc(kk)];
+        pcorc1=[pcorc1;pcorc(kk)];
         roll1=[roll1;roll(kk)];
         pitch1=[pitch1;pitch(kk)];
         thead1=[thead1;thead(kk)];
@@ -317,22 +310,20 @@ structManeuvers(nnn,1).CIhi=std(cell2mat(z1(:)));
 % Now process the concatenated data
 kkks0=kkks0(~isnan(kkks0));
 kkks1=kkks1(~isnan(kkks1));
-ptb=ptb1;
-dp1=dp11;
+dp1=dp1_1;
 tas=tas1;
 alpha=alpha1;
 beta=beta1;
 temp=temp1;
-tempm=tempm1;
 pmb=pmb1;
-psm=psm1;
-dp1m=dp1m1;
-pkor=pkor1;
+pcorc=pcorc1;
+ptb=ptb1;
 dpa=dpa1;
 dpb=dpb1;
 dpr=dpr1;
 dpn=dpn1;
-dp1=dp11;
+psm=psm1;
+trose=trose1;
 vew=vew1;
 vns=vns1;
 vz=vz1;
@@ -345,48 +336,11 @@ yawr=yawr1;
 mr=zeros(size(tas));
 q_impact = q_impact1;
 pcorc = zeros(size(dpa));
-tdpk = -40*ones(size(dpa)) + C.Tzero;
-matfile=sprintf('e:/MATLAB-DATA2/kingair_data/test26/work/maneuvers_%s.mat',PRESSURE);
-save(matfile,"ptb", "psm", "dp1m", "dpa", "dpb", "dpr", "dpn", "tempm","tdpk", "mr");
 
-names  = {'PTB','PSX','DPX','DPA','DPB','DPR','DPN', 'TROSEK', 'TDPK', 'mr'};
-ptb = dp1m + psm;
-values = { ptb,  psm, dp1m, dpa, dpb, dpr, dpn, tempm, tdpk, mr};
-DATA = cell2struct(values, names, 2);
-% Compute fcoef and pcor
-[pcor,fcoef,betaf0,betaf] = do_fcalc0(DATA,PRESSURE,'Plots',false);
-sigma.ptb   = 0.1;
-sigma.psa   = 0.1;
-sigma.dp1   = 0.01;
-sigma.dpa   = 0.01;
-sigma.dpb   = 0.01;
-sigma.dpr   = 0.01;
-sigma.dpn   = 0.01;
-sigma.fcoef = 0.01;
-sigma.tempm = 0.5;
-sigma.pcor  = 0.5;
-[f,qx1,pErr] = fcalc(betaf,DATA,sigma);
-%%%%%%[pcorX,fcoefX]=cone_pcor(dp1m,dpb,dpa,dpr,psm);
-%[pcorc1,fcoef1]=cone_pcor(DP1,DPB,DPA,DPR,PSA);
-                dp1m        = DATA.DPX;
-                dp1         = dp1m + pcor;
-                psm         = DATA.PSX;
-                pmb         = psm - pcor;
-                ptb         = dp1m + psm;
-                dpn         = DATA.DPN;
-                tempm       = DATA.TROSEK;
-                q_impact    = solve858(dp1, DATA.DPA, DATA.DPB, 'dpr', DATA.DPR);
-                pTotal      = q_impact + pmb;
-                r           = 0.97; % recovery coefficient for Temp
-                ADat        = airdata(pmb, pTotal, tempm, r, DATA.TDPK);
-mr      = zeros(size(dpr));
-temp    = ADat.Ts;
-tas     = ADat.TAS;
-alpha   = atan(tanAlpha(dpa,dpb,dpr));
-beta    = atan(tanBeta(dpb,dpr));
-mr      = zeros(size(dpr));
-
-[Params,fu,fv,fw,mag,dir,resid,jacobian,CI,beta_samp] = ...
+matfile = fullfile("e:/MATLAB-DATA2/kingair_data/test26/work/",["maneuvers_"  + PRESSURE + ".mat"]);
+ptb = dp1+psm;
+save(matfile, "ptb", "psm", "dp1", "dpa", "dpb", "dpr", "dpn", "mr");
+[Params,fu,fv,fw,mag,dir,resid,jacobian,CI,beta_samp] = ...tp
     do_fits0(kkks0,kkks1,dp1,dpb,dpa,dpr,q_impact,temp,tas,pmb,mr ...
     ,alpha,beta,roll,pitch,thead,rollr,pitchr,yawr,vew,vns,vz,ARM);
 f=[fu,fv,fw];
@@ -394,7 +348,7 @@ f=[fu,fv,fw];
 nnn=nnn+2; % row number
 structManeuvers(nnn,1).fname='Concat';
 structManeuvers(nnn,1).Params=Params;
-structManeuvers(nnn,1).Clow=CI(:,1)';
+structManeuvers(nnn,1).CIlow=CI(:,1)';
 structManeuvers(nnn,1).CIhi=CI(:,2)';
 
 %  Save the results in a spreadsheet
@@ -507,9 +461,12 @@ fprintf(fid,            'AWinds.HeadOffsetRadians= %g;\n',Params(3));
 fprintf(fid,  'AWinds.AttackFactor= %g, %g ;\n',Params(4),Params(5));
 fprintf(fid, 'AWinds.SideslipFactor= %g, %g;\n',Params(6),Params(7));
 fprintf(fid,                'AWinds.PStaticOffset= %g;\n',Params(8));
+
+
 fclose(fid)
 
 xlsout2=["resultsTable_" + PRESSURE + ".xlsx"];
+
 T_final=outputTable(structManeuvers,xlsout2);
 
 end ; %pppp

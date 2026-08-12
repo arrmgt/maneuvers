@@ -47,4 +47,3 @@ k=R./Cp;
         M=mach(Qc,Ps);% dry
         Gamma=Cpd/Cvd;
 	Ts= Tm./(1+recovf.*M.^2.*(Gamma-1.)/2);
- 

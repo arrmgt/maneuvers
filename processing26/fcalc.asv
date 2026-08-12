@@ -1,0 +1,91 @@
+function [f,qx1,pErr,f0,fqx0,betaf0,XXf,betaf,machn] = fcalc(x,Z,sigma);
+%FCALC Residual function for lsqnonlin pitot-static "f-factor" calibration.
+%
+%   [f,qx1,pErr,f0] = fcalc(x,Z,sigma)
+%
+%   x     - calibration coefficients being solved for (betaf), a 4x1
+%           vector multiplying [1, machn, machn.^2, abFact]
+%   Z     - struct with fields DPA, DPB, DPR, DPN, DP1, PSA, mr, PTB
+%           (one calibration point per row/element)
+%   sigma - measurement-uncertainty input passed through to r858_solve3
+%
+%   f is the residual vector lsqnonlin minimizes: it drives the
+%   corrected impact pressure toward the independent reference q from
+%   r858_solve3, i.e. this is the "force X=Y" fit --
+%       X = qx0 - pErr   (corrected measured impact pressure)
+%       Y = OUT1.q        (reference q)
+%       f = Y - X
+%%
+%   The [1, machn, machn^2, abFact] correction model (the XXf matrix
+%   below) follows Rodi & Leon (2012).
+%
+%   DEPENDENCIES (assumed already on your MATLAB path, not included
+%   here): tanAlpha, tanBeta, impactPcalc, fqCalc, mach, r858_solve3.
+%
+% See also: runCalibrationFit, buildZStruct
+C = phycon;
+
+pa  = Z.DPA;
+pb  = Z.DPB;
+pr  = Z.DPR;
+dp1m = Z.DPX;
+psm = Z.PSX;
+pn  = Z.DPN;
+mr  = Z.mr;
+ptb = Z.PTB;
+Tm  = Z.TROSEK;
+recovf = 0.97;
+Td = -40.*ones(size(psm)) + C.Tzero;
+
+% These are independent of static pressure correction
+tax = tanAlpha(pa,pb,pr);
+tbx = tanBeta(pb,pr);
+abFact = 1+ tax.^2 + tbx.^2;
+abFact1 = sqrt(pa.^2+pb.^2);
+
+qx0 = impactPcalc(dp1m,pa,pb,pr); % uncorrected qc
+% fqx is f*q; fqx/f = q; fqx is independent of pcor
+fqx0 = fq_beta(pa,pb,pr);
+C=phycon;
+% From Rodi&Leon(2012)
+
+betaf0 = [ ...
+    1.699864444944109; ...
+    -0.156929423443038; ...
+    0.066325085038090; ...
+    0.001254576494439  ...
+    ];
+
+betaf0 = [ ...
+    -0.898840651146123; ...
+    0.687198414858206; ...
+    -1.408082102411103; ...
+    2.556062392326805];
+
+% We need mach number to get f, so we have to iterate
+onez = ones(size(psm));
+zeroz = zeros(size(psm));
+clear pErr
+pErr=0;
+ptotal = qx0 + pErr + psm  - pErr;
+betaf=x;
+for i=1:3
+    OUT1 = airdata(psm - pErr, ptotal, Tm, recovf, Td);
+    machn = OUT1.M;
+    XX = [machn machn.^2 abFact]; 
+    XXf=[onez XX];
+    f0=XXf*betaf; 
+    f1=f_beta(dp1m+pErr,pa,pb,pr);
+
+    OUT2 = r858_solve3(ptotal, psm, pa, pb, pr, pn, f0, pErr); %Corrected
+end
+
+XX1f = 0;
+qx1 = OUT1.q_impact;
+f = qx1 - qx0 - pErr;
+f = f0 - f1;
+f = fillmissing(f, 'constant', 0);
+
+end
+
+

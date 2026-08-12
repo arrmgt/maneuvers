@@ -209,7 +209,7 @@ for jj = 1:numel(FLTs)
         % Compute fcoef and pcor
         [pcorc0,fcoef0,betaf0,betaf] = do_fcalc0(DATA,PRESSURE,'Plots',false);
         [~,~,pcorc,fcoef] = fcalc(betaf,DATA0);
-        [pcorc,fcoef]=cone_pcor(DP1,DPB,DPA,DPR,PSA);
+        %[pcorc1,fcoef1]=cone_pcor(DP1,DPB,DPA,DPR,PSA);
 
         switch PRESSURE
             case 'SHIP'
@@ -354,7 +354,7 @@ ptb = dp1m + psm;
 values = { ptb,  psm, dp1m, dpa, dpb, dpr, dpn, tempm, tdpk, mr};
 DATA = cell2struct(values, names, 2);
 % Compute fcoef and pcor
-[pcor,fcoef,betaf0,betaf] = do_fcalc0(DATA,PRESSURE,'Plots',false);
+[pcor,fcoef,betaf0,betaf] = do_fcalc0(DATA,PRESSURE,'Plots',true);
 sigma.ptb   = 0.1;
 sigma.psa   = 0.1;
 sigma.dp1   = 0.01;

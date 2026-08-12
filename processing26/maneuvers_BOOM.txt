@@ -1,7 +1,7 @@
 AWinds.Maneuver_date= 20260408;
 AWinds.RollOffsetRadians= 0.0174533;
-AWinds.PitchOffsetRadians= -0.000825058;
-AWinds.HeadOffsetRadians= -0.00140346;
-AWinds.AttackFactor= 0.798309, -0.0220542 ;
-AWinds.SideslipFactor= 0.78677, 0.00484824;
-AWinds.PStaticOffset= -4.87414;
+AWinds.PitchOffsetRadians= -0.000532905;
+AWinds.HeadOffsetRadians= -0.000528422;
+AWinds.AttackFactor= 0.770187, -0.020666 ;
+AWinds.SideslipFactor= 0.770599, 0.0049546;
+AWinds.PStaticOffset= -1.32838;

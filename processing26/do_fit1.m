@@ -1,3 +1,4 @@
+
 function [x,fu,fv,fw,mag,dir,resid,jacobian,CI,beta_samp]=do_fit1(method,fun,X)
 
 switch method

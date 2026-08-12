@@ -45,7 +45,7 @@ end
 
 if(length(blurf)>1 & ~isempty(orate)),
     if numel(head)==0 
-        y=change_rate(blurf,irate,orate);
+        y=changeRate(blurf,irate,orate);
     else
         fact = 1;
         if any(y > 2*pi)
@@ -53,8 +53,8 @@ if(length(blurf)>1 & ~isempty(orate)),
         end
         s=sin(blurf.*fact);
         c=cos(blurf.*fact);
-        s1=change_rate(s,irate,orate);
-        c1=change_rate(c,irate,orate);
+        s1=changeRate(s,irate,orate);
+        c1=changeRate(c,irate,orate);
         blurf=atan2(s1,c1).*180/pi;
         y=blurf/fact;
     end

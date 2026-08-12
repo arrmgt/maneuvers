@@ -19,9 +19,10 @@ function [f,fus,fvs,fws,va,vg,mmm]=wcal8(x,Data);
 try
     att     =   Data.att(:,:);      %[roll,pitch,thead]
     pmb     =   Data.air(:,1);      %[pmb,ttotK,trf,mr];
-    ttotK   =   Data.air(:,2);
+    ttotKm  =   Data.air(:,2);
     trf     =   Data.air(:,3); 
     mr      =   Data.air(:,4);
+    recovf  =   Data.recovf;
 
     attr    =   Data.attr(:,:);     %[rollr,pitchr,yawr];
     tas     =   Data.flow(:,1);     %[tas,alpha,beta];
@@ -37,7 +38,7 @@ try
     q_impact=   Data.boom(:,5);
     tzero   =   273.15;
     
-    poffset =   x(8)
+    poffset =   x(8);
     dp1     =   Data.boom(:,1) + poffset;
     dpb     =   Data.boom(:,2);
     dpa     =   Data.boom(:,3);
@@ -56,9 +57,12 @@ try
     OMEGA   =   attr;
     afactor =   [x(4),x(5)];
     bfactor =   [x(6),x(7)];
-
-    ts          = tstatic(ttotK,0.97,q_impact,ps,mr);
-    tas         = tasf(q_impact,ps,ts,mr);
+    
+    ptot = dp1 + pmb;
+    Td = -40.*ones(size(pmb))+273.15;
+    OUT = airdata(pmb, ptot, ttotKm, recovf, Td);
+    ts = OUT.Ts;
+    tas = OUT.TAS;
     
     % [vg,va]=get_vg(bet0,alp0,tas,att0,omega,arm,bfactor,afactor,rolloff,pitoff,hedoff);
     [vg,va,mmm] = get_vg(beta,alpha,tas,att,OMEGA,ARM,bfactor,afactor,x(1),x(2),x(3));
