@@ -17,8 +17,9 @@ function [f,fus,fvs,fws,va,vg,mmm]=wcal8(x,Data);
 %   Beta  = x(6)*beta_indicated   + x(7)
 
 try
-    att     =   Data.att(:,:);      %[roll,pitch,thead]
-    pmb     =   Data.air(:,1);      %[pmb,ttotK,trf,mr];
+    poffset =   x(8);
+    att     =   Data.att(:,:);              %[roll,pitch,thead]
+    pmb     =   Data.air(:,1) - poffset;    %[pmb,ttotK,trf,mr];
     ttotKm  =   Data.air(:,2);
     trf     =   Data.air(:,3); 
     mr      =   Data.air(:,4);
@@ -88,5 +89,5 @@ try
 catch ME
     catchME(ME)
 end
-sprintf('std = %5.2f mean = %5.2f',std(fus),mean(fus))
+%%%sprintf('std = %5.2f mean = %5.2f',std(fus),mean(fus))
 

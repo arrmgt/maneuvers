@@ -1,5 +1,4 @@
-function [pcorc,fcoef]=cone_pcor(DATA,betaf0,betaf);
-%%%%function [pcorc,fcoef,machn,qx,tbx,tax,XXf,betaf,qx0,f0]=cone_pcor(dp1,pb,pa,pr,psm,varargin);
+function [pcorc,fcoef,machn,qx,tbx,tax,XXf,betaf,qx0,f0]=cone_pcor(dp1,pb,pa,pr,psm,varargin);
 % REVISED for NEW KING AIR
 %       [pcorc,fcoef,machn,qx,tbx,tax,XXf,betaf,qx0,f0]=
 %               cone_pcor(dp1,pb,pa,pr,psm,varargin);
@@ -15,37 +14,44 @@ function [pcorc,fcoef]=cone_pcor(DATA,betaf0,betaf);
 %       f0 = 858 probe sensitivity factor
 %       XXF, betaf , machn are for diagnostic checking (see below)
 %     
-% REVISED FOR NEW KING AIR 20260712
-C=phycon;
+% REVISED FOR NEW KING AIR 20260812
+p = inputParser;
+addParameter(p, "SOURCE", "SHIP",              @(s)ischar(s)||isstring(s));
+addParameter(p, "mr",     zeros(size(dp1)),    @(x)isnumeric(x)&&isscalar(x));
+p.parse(varargin{:});
+SOURCE = p.Results.SOURCE;
+mr     = p.Results.mr;
 
-%dp1,pb,pa,pr,psm
-dp1 = DATA.DPX;
-pb = DATA.DPB;
-pa = DATA.DPA;
-pr = DATA.DPR;
-pn = DATA.DPN;
-psm = DATA.PSX;
-Tm = DATA.TROSEK;
-mr = DATA.mr;
+switch SOURCE  % SHIP or BOOM static pressure?
+    case "SHIP"
+        betaf0 = [ ...
+           1.699864444944109; ...
+          -0.156929423443038; ...
+           0.066325085038090; ...
+           0.001254576494439  ...
+           ];
 
-% These are independent of static pressure 
+    case "BOOM"
+        betaf0 = [ ...
+           1.699864444944109; ...
+          -0.156929423443038; ...
+           0.066325085038090; ...
+           0.001254576494439  ...
+           ];
+end
+% These are independent of static pressure correction
 tax = tanAlpha(pa,pb,pr);
 tbx = tanBeta(pb,pr);
 abFact = 1 + tax.^2 + tbx.^2;
 qx0 = impactPcalc(dp1,pa,pb,pr); %uncorrected
-% fqx us f*q; fqx/f = q; fqx is independent of pcor
-fqx = fqCalc(pa,pb,pr);  
+fqx0 = fqCalc(pa,pb,pr);  
 
 dp1_min = 10; %mb
 % Sanity check
-% machn=mach(qx0,psm,mr);
-Td = -40*ones(size(psm))+C.Tzero;
-recovf = 0.97;
-OUT = airdata(psm, dp1+psm, Tm, recovf, Td);
-machn = OUT.M;
+machn=mach(qx0,psm,mr);
 
 kk = find ( dp1>dp1_min & qx0>20 & qx0<80 & ...
-    ((qx0+psm)./psm-1)>0 & psm>200 & psm<1200 );
+    ((qx0+psm)./psm-1)>0 & psm>200 & psm<1200  & machn<.6);
 if ~isempty(kk)
     dp1 = interp1(kk,dp1(kk),[1:numel(dp1)]','linear',0);
     qx0 = interp1(kk,qx0(kk),[1:numel(dp1)]','linear',0);
@@ -54,26 +60,21 @@ end
 
 onez = ones(size(psm));
 % Set default f
-f0=1.68.*ones(size(dp1)); % just a guess
+f0=1.7.*ones(size(dp1)); % just a guess
 %  We need mach number to get f, so we have to iterate
-pErr = fqx./f0 -qx0;  %  Error in q
+pErr = fqx0./f0 -qx0;  %  Error in q
 ptotal = qx0 + psm;
-for jj = 1:3 % iterate three times
-    OUT1 = airdata(psm - pErr, ptotal, Tm, recovf, Td); %Uncorrected
-    machn = OUT1.M;
-    XX0 = [machn machn.^2 pa];
-    XX0f = [onez XX0];
-    f0 = XX0f*betaf0;
-    XX1 = [machn ptotal pa pn];
-    XX1f = [onez XX1];
-    pErr = XX1f*betaf;
-    OUT2 = r858_solve3(ptotal, psm, pa, pb, pr, pn, f0, pErr); %Corrected
+for jj=1:3 % Iterate three times
+    machn = mach(qx0 + pErr, psm - pErr, mr);
+    XX = [machn machn.^2 pa]; 
+    XXf=[onez XX];
+    f0=XXf*betaf0; 
+    pErr = fqx0./f0 - qx0;
 end
 
 % clamp the endpoints
 pcorc = pErr; 
-OUT = r858_solve3(qx0, psm, pa, pb, pr, pn, f0, pErr); %Corrected
-qx = OUT.q;
+qx = qx0 + pErr;
 fcoef = f0;
 if numel(kk)>10
     k1 = kk(1); k2 = kk(end);

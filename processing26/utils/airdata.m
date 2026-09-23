@@ -25,7 +25,7 @@ function OUT = airdata(Ps_meas, Pt_meas, Tm, recovf, Td, varargin)
 % OPTIONAL NAME-VALUE INPUTS
 %
 %   'dPs_corr' : Static pressure correction (hPa), scalar or array
-%                Ps_corr = Ps_meas + dPs_corr is used in all calculations
+%                Ps_corr = Ps_meas - dPs_corr is used in all calculations
 %                If not entered, inputs assumed to be already corrected.
 %   'Z_gps'    : GPS altitude (m) used to initialize Zhydrostatic calc.
 %
@@ -98,7 +98,7 @@ function OUT = airdata(Ps_meas, Pt_meas, Tm, recovf, Td, varargin)
 %
 % -------------------------------------------------------------------------
 %   Corrected static pressure :
-%       Ps_corr = Ps_meas + dPs_corr
+%       Ps_corr = Ps_meas - dPs_corr
 %   Optional: name/value input:
 %   'dPs_corr' : Static pressure correction (hPa), scalar or array
 %
@@ -119,29 +119,29 @@ Opts = p.Results;
 
 % ---------- Apply static pressure correction ----------
 % ---------- And check input data ----------------------
-kk0 = 1:numel(Ps_meas);
+kk0 = [1:numel(Ps_meas)]';
 dPs_corr = Opts.dPs_corr;
 if ~isempty(dPs_corr)
     kk = find (~isnan(dPs_corr) & ~isinf(dPs_corr) ...
         & abs(dPs_corr)<15 & abs(gradient(dPs_corr))<10 );
-    dPs_corr = interp1(kk,Opts.dPs_corr(kk),kk0',"linear",0);
+    dPs_corr = interp1(kk,Opts.dPs_corr(kk),kk0,"nearest","extrap");
 else
     dPs_corr = zeros(size(Ps_meas));
 end
 
 kk = find (~isnan(Ps_meas) & ~isinf(Ps_meas) ...
     & Ps_meas>100 & Ps_meas<1200 & abs(gradient(Ps_meas))<10 );
-Ps_meas = interp1(kk,Ps_meas(kk),kk0',"linear",500);
+Ps_meas = interp1(kk,Ps_meas(kk),kk0,"nearest","extrap");
 
 kk = find (~isnan(Pt_meas) & ~isinf(Pt_meas) ...
     & Pt_meas>100 & Pt_meas./Ps_meas>1 & abs(gradient(Pt_meas))<10);
-Pt_meas = interp1(kk,Pt_meas(kk),kk0',"linear",550);
+Pt_meas = interp1(kk,Pt_meas(kk),kk0,"nearest","extrap");
 
 kk = find (~isnan(Tm) & ~isinf(Tm) & Tm >200);
-Tm = interp1(kk,Tm(kk),kk0',"linear",200);
+Tm = interp1(kk,Tm(kk),kk0,"nearest","extrap");
 
 kk = find (~isnan(Td) & ~isinf(Td) & Td>200 );
-Td = interp1(kk,Td(kk),kk0',"linear",200);
+Td = interp1(kk,Td(kk),kk0,"nearest","extrap");
 
 % ---------- Input size checks ----------
 if ~isequal(size(Ps_meas), size(Pt_meas), size(Tm), size(Td))
@@ -186,7 +186,7 @@ function S = core_calc(Ps_meas, Pt_meas, Tm, recovf, Td, ...
 %
 % Ps_meas and Pt_meas are measured pressures (hPa)
 % Corrections applied:
-%   Ps = Ps_meas + dPs_corr;
+%   Ps = Ps_meas - dPs_corr;
 %   Pt = Pt_meas + dPs_corr;
 % All internal pressure calculations use Ps and Pt (hPa)
 

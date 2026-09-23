@@ -9,29 +9,29 @@ function [q, f, ta_out, tb_out, sigma_q, sigma_f, res, stats] = ...
 % -----------------------------------------------------------------------
 %  EQUATION STRUCTURE  (P=1+ta²+tb², S=ta²+tb², fq≡f·q)
 % -----------------------------------------------------------------------
-%  [req]  eq1:  P·q − S·fq  = dp1a·P        centre-hole vs static
+%  [req]  eq1:  P·q − S·fq   = dp1a·P        centre-hole vs static
 %  [req]  eq2:  2·ta·fq      = dpa·P          alpha pair
 %  [req]  eq3:  2·tb·fq      = dpb·P          beta pair
 %  [opt]  eq4:  cb·fq        = 2·dpr·P        p1 − right sideslip (cb=1−2tb−tb²)
 %  [opt]  eq5:  ca·fq        = 2·DPN·P        p1 − bottom attack  (ca=1−2ta−ta²)
-%  [opt]  eq6:  P·q − S·fq  = ptb_diff·P    ptb_abs − pstatic
+%  [opt]  eq6:  P·q − S·fq   = ptb_diff·P    ptb_abs − pstatic
 %
-%  ANGLE DETERMINATION STRATEGY
+%  DETERMINATION STRATEGY
 %  -----------------------------
-%    dpr only  :  tb from dpb+dpr quadratic;  ta = tb·dpa/dpb  (ratio)
-%    DPN only  :  ta from dpa+DPN quadratic;  tb = ta·dpb/dpa  (ratio)
-%    dpr + DPN :  ta from dpa+DPN quadratic;  tb from dpb+dpr quadratic
-%                 (best conditioned — avoids ratio instability at small dpb or dpa)
+%    dpr present: DPR determines tb and ta; the formulation is stable as
+%                 dpb approaches zero.
+%    DPN only   : DPN determines ta; tb is filled from the dpa/dpb ratio.
+%    dpr + DPN : DPN is diagnostic only and contributes an extra residual.
 %
 %  DEGREES OF FREEDOM
 %  ------------------
-%    dof = (use_dpr + use_DPN − 1) + use_ptb + use_fsim
+%    dof = (use_dpr + use_DPN − 1) + use_fsim
 %
 %               | dpr only | DPN only | dpr + DPN |
-%  no ptb,fsim  |    0     |    0     |     1     |
-%  + ptb        |    1     |    1     |     2     |
-%  + f_sim      |    1     |    1     |     2     |
-%  + ptb+f_sim  |    2     |    2     |     3     |
+%  fsim         |    0     |    0     |     1     |
+%  DPR + DPN    |    0     |    0     |     0     |
+%  DPR+DPN+fsim |    1     |    1     |     1     |
+%  When both DPR and DPN are supplied, DPN is held out of the fitted dof.
 %
 %  dof=0: exact solution; sigma_resid=NaN; uncertainty from sigma_trans only.
 %
@@ -67,7 +67,7 @@ function [q, f, ta_out, tb_out, sigma_q, sigma_f, res, stats] = ...
 %
 %  OPTIONAL NAME-VALUE INPUTS
 %    'dpr'           N×1  p1 − right sideslip port  (at least one of dpr/DPN needed)
-%    'DPN'           N×1  p1 − bottom attack port   (at least one of dpr/DPN needed)
+%    'DPN'           N×1  p1 − bottom attack port; diagnostic when dpr is supplied
 %    'ptb_abs'       N×1  absolute pressure at port 1
 %    'pstatic'       N×1  static pressure — both ptb_abs and pstatic required together
 %    'sigma_ptb'     1-sigma for ptb_abs transducer            (default 0)
@@ -93,14 +93,14 @@ function [q, f, ta_out, tb_out, sigma_q, sigma_f, res, stats] = ...
 %    ta_out   tan(angle of attack)    (NaN where invalid)
 %    tb_out   tan(sideslip angle)     (NaN where invalid)
 %    sigma_q  total 1-sigma on q      (NaN where invalid or dof=0 with no sigma_trans)
-%    sigma_f  total 1-sigma on f      (NaN when f_sim supplied, dof=0, or invalid)
+%    sigma_f  total 1-sigma on f pc     (NaN when f_sim supplied, dof=0, or invalid)
 %    res      residuals N×n_eq
 %             Columns (in order, when present):
 %               [r_ptb, r_dp1a, r_dpa, r_dpb, r_dpr, r_DPN]
 %               r_ptb / r_dp1a : only when ptb supplied (no f_sim) or f_sim supplied
 %               r_dp1a alone   : only when f_sim (no ptb) — dp1a in LS
 %               r_dpr          : only when dpr supplied
-%               r_DPN          : only when DPN supplied
+%               r_DPN          : DPN diagnostic residual when dpr is supplied
 %    stats    struct (see STATS FIELDS)
 %
 %  STATS FIELDS
@@ -110,7 +110,9 @@ function [q, f, ta_out, tb_out, sigma_q, sigma_f, res, stats] = ...
 %               .sigma_ta, .sigma_tb, .sigma_alpha, .sigma_beta
 %    Global:    .N_valid, .q_mean,.q_std,.q_ci_global
 %               .f_mean, .f_std, .f_ci_global, .R2_median
-%    Info:      .dof, .use_dpr, .use_DPN, .use_ptb, .use_fsim, .alpha, .sigma_dp
+%    Info:      .dof, .use_dpr, .use_DPN, .DPN_diagnostic, .use_ptb,
+%               .use_fsim, .alpha, .sigma_dp
+%               .DPN_residual, .DPN_bias, .DPN_std, .DPN_rms
 % -----------------------------------------------------------------------
 
 % ---- parse inputs -------------------------------------------------------
@@ -128,9 +130,9 @@ addParameter(p, 'f_sim',         []);
 addParameter(p, 'sigma_dp',      0);
 addParameter(p, 'ps_cor',        0);
 addParameter(p, 'q_bounds',      [5,  150]);
-addParameter(p, 'f_bounds',      [1,   3  ]);
-addParameter(p, 'ta_bounds',     [-2,  2  ]);
-addParameter(p, 'tb_bounds',     [-2,  2  ]);
+addParameter(p, 'f_bounds',      [1,   2.5]);
+addParameter(p, 'ta_bounds',     [-1,  1  ]);
+addParameter(p, 'tb_bounds',     [-1,  1  ]);
 addParameter(p, 'alpha',         0.05);
 parse(p, dp1a, dpa, dpb, varargin{:});
 
@@ -153,6 +155,7 @@ use_dpr  = ~isempty(dpr);
 use_DPN  = ~isempty(DPN);
 use_ptb  = ~isempty(ptb_abs) && ~isempty(pstatic);
 use_fsim = ~isempty(f_sim);
+DPN_diagnostic = use_DPN && use_dpr;
 
 if ~use_dpr && ~use_DPN
     error('solve858:noAngleSensor', ...
@@ -171,6 +174,7 @@ if use_ptb
     sigma_ptb_diff = sqrt(sig_ptb.^2 + sig_ps.^2);
 else
     ptb_diff       = zeros(size(dp1a));
+    ptb_diff       = dp1a;
     sigma_ptb_diff = 0;
 end
 
@@ -185,7 +189,8 @@ if any(ps_cor ~= 0)
 end
 
 % ---- degrees of freedom -------------------------------------------------
-dof_val = (use_dpr + use_DPN - 1) + use_ptb + use_fsim;   % 0, 1, 2, or 3
+dof_val = (use_dpr + (use_DPN && ~DPN_diagnostic) - 1) + ...
+    use_ptb + use_fsim;
 
 % n_ctr: number of [P,−S] rows  (1 without ptb, 2 with ptb)
 n_ctr = 1 + double(use_ptb);
@@ -224,10 +229,12 @@ ta_out(~valid) = NaN;  tb_out(~valid) = NaN;
 if nargout < 5, return; end
 
 % ---- residuals ----------------------------------------------------------
-%  With f_sim:  all equations contribute to the q LS; all have residuals.
+%  With f_sim: fitted equations contribute to the q LS; all supplied
+%  equations have residuals. DPN is held out when dpr is supplied.
 %  Without f_sim:
 %    dp1a (and ptb_diff when ptb supplied) give q exactly / averaged.
-%    dpa, dpb, dpr, DPN give the fq LS residuals.
+%    dpa, dpb and the angle-source equation give fq residuals; DPN is
+%    diagnostic only when dpr is supplied.
 %    When ptb present: r_ptb = P*(dp1a−ptb_diff)/2 = −r_dp1a.
 %    When ptb absent and no f_sim: dp1a is an exact equation — no residual.
 
@@ -255,11 +262,20 @@ else
     if use_DPN, cols{end+1} = ca.*fq - 2.*DPN.*P;  end
 end
 res = [cols{:}];
+if DPN_diagnostic
+    DPN_residual = res(:, end);
+    res_fit = res(:, 1:end-1);
+else
+    DPN_residual = NaN(size(q_raw));
+    res_fit = res;
+end
+DPN_residual(~valid) = NaN;
 res(~valid,:) = 0;
+res_fit(~valid,:) = 0;
 
 % ---- residual-based sigma -----------------------------------------------
 if dof_val > 0
-    sigma2_resid = sum(res.^2, 2) ./ dof_val;
+    sigma2_resid = sum(res_fit.^2, 2) ./ dof_val;
 else
     sigma2_resid = NaN(size(q_raw));
 end
@@ -296,7 +312,7 @@ if use_dpr
     fd_vals{end+1}  = dpr;
     fd_sigma(end+1) = sigma_dp(4);
 end
-if use_DPN
+if use_DPN && ~DPN_diagnostic
     fd_names{end+1} = 'DPN';
     fd_vals{end+1}  = DPN;
     fd_sigma(end+1) = sigma_dp(3 + use_dpr + 1);
@@ -374,8 +390,21 @@ sigma_alpha(~valid) = NaN;
 sigma_beta(~valid)  = NaN;
 
 % ---- combined total uncertainty -----------------------------------------
-sigma_q = sqrt(sigma_q_resid.^2 + sigma_q_trans.^2);
-sigma_f = sqrt(sigma_f_resid.^2 + sigma_f_trans.^2);
+if dof_val > 0
+    sigma_q = sqrt(sigma_q_resid.^2 + sigma_q_trans.^2);
+    sigma_f = sqrt(sigma_f_resid.^2 + sigma_f_trans.^2);
+elseif any(fd_sigma > 0)
+    % Exact fit: residual variance is unavailable; retain propagated
+    % transducer uncertainty rather than converting it to NaN.
+    sigma_q = sigma_q_trans;
+    sigma_f = sigma_f_trans;
+else
+    sigma_q = NaN(size(q_raw));
+    sigma_f = NaN(size(f_raw));
+end
+if use_fsim
+    sigma_f(:) = NaN;
+end
 
 if nargout < 8, return; end
 
@@ -394,13 +423,15 @@ f_ci(~valid,:) = NaN;
 % ---- R² (over equations represented in res) -----------------------------
 SS_tot = (dpa.*P).^2 + (dpb.*P).^2;
 if use_dpr,   SS_tot = SS_tot + (2.*dpr.*P).^2;              end
-if use_DPN,   SS_tot = SS_tot + (2.*DPN.*P).^2;              end
+if use_DPN && ~DPN_diagnostic
+    SS_tot = SS_tot + (2.*DPN.*P).^2;
+end
 if use_ptb
     SS_tot = SS_tot + (ptb_diff.*P).^2 + (dp1a.*P).^2;
 elseif use_fsim
     SS_tot = SS_tot + (dp1a.*P).^2;
 end
-R2 = 1 - sum(res.^2, 2) ./ SS_tot;
+R2 = 1 - sum(res_fit.^2, 2) ./ SS_tot;
 R2(~valid) = NaN;
 
 % ---- global statistics --------------------------------------------------
@@ -437,6 +468,11 @@ stats.sigma_beta    = sigma_beta;
 stats.dof           = dof_val;
 stats.use_dpr       = use_dpr;
 stats.use_DPN       = use_DPN;
+stats.DPN_diagnostic = DPN_diagnostic;
+stats.DPN_residual   = DPN_residual;
+stats.DPN_bias       = mean(DPN_residual(valid));
+stats.DPN_std        = std(DPN_residual(valid));
+stats.DPN_rms        = sqrt(mean(DPN_residual(valid).^2));
 stats.use_ptb       = use_ptb;
 stats.use_fsim      = use_fsim;
 stats.alpha         = alpha;
@@ -457,13 +493,15 @@ function [q, f, ta, tb, fq, S, P, ca, cb, D] = ...
 %    dpr only    : ta from ratio  ta = tb·dpa/dpb
 %    DPN only    : tb from ratio  tb = ta·dpb/dpa
 
+% Implementation note: when dpr is present it defines both angles; DPN is
+% retained as a redundant equation for residual/statistical assessment.
 use_fsim_here = nargin >= 13 && ~isempty(f_sim);
 
 ta = zeros(size(dpa));
 tb = zeros(size(dpb));
 
-% ---- ta: from DPN quadratic or filled later via ratio -------------------
-if use_DPN
+% ---- ta: from DPN only when DPR is unavailable ---------------------------
+if use_DPN && ~use_dpr
     % dpa·ta² + (2·dpa + 4·DPN)·ta − dpa = 0
     b_a    = 2.*dpa + 4.*DPN;
     disc_a = b_a.^2 + 4.*dpa.^2;
@@ -473,15 +511,25 @@ if use_DPN
     ta(dpa < 0) = min(ta_r1(dpa < 0), ta_r2(dpa < 0));
 end
 
-% ---- tb: from dpr quadratic or filled later via ratio -------------------
+% ---- tb and ta: stable DPR-based solution -------------------------------
 if use_dpr
     % dpb·tb² + (2·dpb + 4·dpr)·tb − dpb = 0
     b_b    = 2.*dpb + 4.*dpr;
     disc_b = b_b.^2 + 4.*dpb.^2;
-    tb_r1  = (-b_b + sqrt(disc_b)) ./ (2.*dpb);
-    tb_r2  = (-b_b - sqrt(disc_b)) ./ (2.*dpb);
-    tb(dpb > 0) = max(tb_r1(dpb > 0), tb_r2(dpb > 0));
-    tb(dpb < 0) = min(tb_r1(dpb < 0), tb_r2(dpb < 0));
+    sign_b = ones(size(b_b));
+    sign_b(b_b < 0) = -1;
+    q_b = -0.5 .* (b_b + sign_b .* sqrt(disc_b));
+    tb_large = q_b ./ dpb;
+    tb_small = -dpb ./ q_b;
+    use_small = abs(tb_small) <= abs(tb_large);
+    tb = tb_large;
+    tb(use_small) = tb_small(use_small);
+    tb(dpb == 0 & dpr ~= 0) = 0;
+
+    % Combining eq2 and eq4 avoids division by dpb near zero sideslip.
+    cb_dpr = 1 - 2.*tb - tb.^2;
+    nz = abs(dpr) > eps * max(1, max(abs(dpr(:))));
+    ta(nz) = dpa(nz) .* cb_dpr(nz) ./ (4.*dpr(nz));
 end
 
 % ---- ratio fill-in for the angle not determined by quadratic ------------
@@ -489,12 +537,7 @@ if use_DPN && ~use_dpr
     % tb from ratio  tb = ta·dpb/dpa  (DPN-only mode)
     nz = abs(dpa) > eps * max(abs(dpa(:)));
     tb(nz) = ta(nz) .* dpb(nz) ./ dpa(nz);
-elseif use_dpr && ~use_DPN
-    % ta from ratio  ta = tb·dpa/dpb  (dpr-only mode)
-    nz = abs(dpb) > eps * max(abs(dpb(:)));
-    ta(nz) = tb(nz) .* dpa(nz) ./ dpb(nz);
 end
-% Both present: ta from DPN quad, tb from dpr quad — no ratio needed.
 
 ta = max(ta_bnd(1), min(ta_bnd(2), ta));
 tb = max(tb_bnd(1), min(tb_bnd(2), tb));
@@ -512,7 +555,7 @@ if use_dpr
     D  = D  + cb.^2;
     Nv = Nv + 2.*cb.*dpr;
 end
-if use_DPN
+if use_DPN && ~use_dpr
     D  = D  + ca.^2;
     Nv = Nv + 2.*ca.*DPN;
 end
@@ -530,7 +573,7 @@ if use_fsim_here
     %   C'C = n_ctr·(P−f·S)² + f²·D_fq
     D_fq  = 4.*S;
     if use_dpr, D_fq = D_fq + cb.^2; end
-    if use_DPN, D_fq = D_fq + ca.^2; end
+    if use_DPN && ~use_dpr, D_fq = D_fq + ca.^2; end
     c_ctr = P - f_sim.*S;
     num   = c_ctr .* dp_sum .* P  +  f_sim .* Nv .* P;
     den   = n_ctr .* c_ctr.^2    +  f_sim.^2 .* D_fq;

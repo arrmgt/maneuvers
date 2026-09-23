@@ -1,15 +1,21 @@
-clear;close all
 restoredefaultpath
-addpath('c:/users/alfre/Github/kingair-Sys26-test/Sys26/get_vars/mfiles858')
-addpath('c:/users/alfre/Github/kingair-Sys26-test/Sys26/get_vars/utilities')
 addpath('utils');
 nnn=0;
-;
+
+% From Rodi&Leon(2012)
+BETAF0 = [ ...
+    1.699864444944109; ...r
+    -0.156929423443038; ...
+    0.066325085038090; ...
+    0.001254576494439  ...
+    ];
+
 datadir = 'E:/MATLAB-DATA2/kingair_data/';
 FLTs = ["20260408a_arr.c10.nc" 
         "20260408b_arr.c10.nc"  
         "20260624_arr.c10.nc"
-        "20260626_arr.c10.nc"];
+        "20260626_arr.c10.nc"
+        "20260831_arr.c10.nc"];
 
 s1=extractAfter(FLTs{1},'.c');
 irate=str2num(extractBefore(s1,'.'));
@@ -37,55 +43,63 @@ if blurf
     M.flt(4,2).kk = unique([ceil(21908*r):ceil(25348*r)]); %Rodi
     M.flt(4,3).kk = unique([ceil(26000*r):ceil(29902*r)]); % tas S/L
     M.flt(4,4).kk = unique([ceil(35852*r):ceil(37854*r)]); % betas S/L
+    % 
+    M.flt(5,1).kk = unique([ceil(18368*r):ceil(21048*r)]); %Rodi
+    M.flt(5,2).kk = unique([ceil(23781*r):ceil(29371*r)]); %TAS turn
+    M.flt(5,3).kk = unique([ceil(31033*r):ceil(34058*r)]); %TAS turn
+    M.flt(5,4).kk = [];
 
 end
 [nn,mm] = size(M.flt);
 
 PROJ = 'test26'
-% The *1 variables will have the concatinated series
-tas1=[];
-alpha1=[];
-beta1=[];
-temp1=[];
-tempm1=[];
-pmb1=[];
-psm1=[];
-pkor1=[];
-ptb1=[];
-dpn1=[];
 
-dp1m1=[];
-dpa1=[];
-dpb1=[];
-dpr1=[];
-dp11=[];
-roll1=[];
-pitch1=[];
-thead1=[];
-rollr1=[];
-pitchr1=[];
-yawr1=[];
-vew1=[];
-vns1=[];
-vz1=[];
-norma1=[];
-lata1=[];
-longa1=[];
-ARM1=[];
-q_impact1 = [];
-mr = [];
-
-bb = 0;
-iiis0=1; % this is to start the accumulation indices of maneuver sections
-kkks0=nan(nn*mm,1); % this  will be where the segment indices are saved
-kkks1=nan(nn*mm,1);
 
 C=phycon();
 delete figs/*.jpg
 PRES = ["SHIP" "BOOM"];
-PRES = ["SHIP"];
+
 for pppp=1:numel(PRES)
     PRESSURE = PRES(pppp);
+    % The *1 variables will have the concatinated series
+    tas1=[];
+    alpha1=[];
+    beta1=[];
+    temp1=[];
+    tempm1=[];
+    pmb1=[];
+    psm1=[];
+    pkor1=[];
+    ptb1=[];
+    dpn1=[];
+
+    dp1m1=[];
+    dpa1=[];
+    dpb1=[];
+    dpr1=[];
+    dp11=[];
+    roll1=[];
+    pitch1=[];
+    thead1=[];
+    rollr1=[];
+    pitchr1=[];
+    yawr1=[];
+    vew1=[];
+    vns1=[];
+    vz1=[];
+    norma1=[];
+    lata1=[];
+    longa1=[];
+    ARM1=[];
+    q_impact1 = [];
+    mr = [];
+
+    bb = 0;
+    iiis0=1; % this is to start the accumulation indices of maneuver sections
+    kkks0=nan(nn*mm,1); % this  will be where the segment indices are saved
+    kkks1=nan(nn*mm,1);
+
+    nnn=0;
 
 for jj = 1:numel(FLTs)
 
@@ -95,26 +109,20 @@ for jj = 1:numel(FLTs)
     rawFile = [ extractBefore(arcFile, lastUnd) +  "_raw.nc"]; 
     ARM     = ncreadatt(arcFile,'/','AWinds.MomentArm');   
     
-    % Get the data and recalibrate to 202624* raw files;
+    % Get the data and recalibrate to boom data if TEST=true
     X.RawPath='e:/MATLAB-DATA2/kingair_data/test26/work/20260701_raw.nc';
     RAWNAMES = ["PSA" "PSB" "TROSE" "PTB" "DPA" ...
-    "DPB" "DPR" "DP1" "DP2" "DPN" "PTB" "TROSE"];  
+    "DPB" "DPR" "DP1" "DP2" "DPN" "PTB"];  
     TEST = true 
     if TEST
         [filepath,name,ext] = fileparts(X.RawPath);
-        rawFile1 = fullfile(filepath,["20260701_raw" + ext]);
+        rawFile1 = fullfile(filepath,["20260710a_raw" + ext]);
     end
   
     for i=1:numel(RAWNAMES)
         jrate = get_irate(rawFile,RAWNAMES(i));
-        try
         x = get_data(rawFile,RAWNAMES(i),[],jrate,orate);
-        catch ME
-            RAWNAMES(i)
-            catchME(ME)
-        end
-
-        if TEST
+        if TEST % fix early calibrations 
             c0 = ncreadatt(rawFile, RAWNAMES(i),"CalibrationCoefficients");
             c1 = ncreadatt(rawFile1,RAWNAMES(i),"CalibrationCoefficients");
             V = (x - c0(1)) ./ c0(2);
@@ -122,6 +130,9 @@ for jj = 1:numel(FLTs)
         else
             y = x;
         end
+        [B,Tfrm,TFoutlier]=rmoutliers(y,'movmedian',jrate/2); %1/2 sec running median
+        zz = find(~TFoutlier);
+        y = interp1(zz,y(zz),[1:numel(y)]','pchip',0);
         eval(sprintf("%s = y;",RAWNAMES(i)));
     end
     jrate = get_irate(rawFile,'AALT')
@@ -207,9 +218,8 @@ for jj = 1:numel(FLTs)
             DATA.(fn{i}) = DATA0.(fn{i})(kk);
         end
         % Compute fcoef and pcor
-        [pcorc0,fcoef0,betaf0,betaf] = do_fcalc0(DATA,PRESSURE,'Plots',false);
-        [~,~,pcorc,fcoef] = fcalc(betaf,DATA0);
-        [pcorc,fcoef]=cone_pcor(DP1,DPB,DPA,DPR,PSA);
+        %%[pcorc,fcoef,betaf0,betaf] = do_fcalc0(DATA,PRESSURE,'Plots',false);
+        [pcorc,fcoef] = cone_pcor(DATA0.DPX,DATA0.DPB,DATA0.DPA,DATA0.DPR,DATA0.PSX,'SOURCE',PRESSURE);
 
         switch PRESSURE
             case 'SHIP'
@@ -218,24 +228,28 @@ for jj = 1:numel(FLTs)
                 psm         = DATA0.PSX;
                 pmb         = psm - pcorc;
                 ptb         = dp1m + psm;
-                dpn         = DPN;
+                dpn         = DATA0.DPN;
                 tempm       = TROSEK;
                 q_impact    = solve858(dp1, DPA, DPB, 'dpr', DPR);
+                OUT1        = r858_solve(ptb, psm, DPA, DPB, DPR, DPN,fcoef,pcorc);
+                q_impact = OUT1.q;
                 pTotal      = q_impact + pmb;
                 r           = 0.97; % recovery coefficient for Temp
                 ADat        = airdata(pmb, pTotal, tempm, r, TDPK);
             case 'BOOM'
-                dp1m        = DP2;
+                dp1m        = DATA0.DPX;
                 dp1         = dp1m + pcorc;
-                psm         = PSB;
+                psm         = DATA0.PSX;
                 pmb         = psm - pcorc;
                 ptb         = dp1m + psm;
-                dpn         = DPN;
+                dpn         = DATA0.DPN;
                 tempm       = TROSEK;
                 q_impact    = solve858(dp1, DPA, DPB, 'dpr', DPR);
+                OUT1        = r858_solve(ptb, psm, DPA, DPB, DPR, DPN,fcoef,pcorc);
+                q_impact = OUT1.q;
                 pTotal      = q_impact + pmb;
-                r           = 0.97;
-                ADat        = airdata(pmb, pTotal, tempm, r, DATA.TDPK) 
+                r           = 0.97; % recovery coefficient for Temp
+                ADat        = airdata(pmb, pTotal, tempm, r, TDPK);
         end
         tas     = ADat.TAS;
         temp    = ADat.Ts;
@@ -346,15 +360,21 @@ mr=zeros(size(tas));
 q_impact = q_impact1;
 pcorc = zeros(size(dpa));
 tdpk = -40*ones(size(dpa)) + C.Tzero;
-matfile=sprintf('e:/MATLAB-DATA2/kingair_data/test26/work/maneuvers_%s.mat',PRESSURE);
-save(matfile,"ptb", "psm", "dp1m", "dpa", "dpb", "dpr", "dpn", "tempm","tdpk", "mr");
 
 names  = {'PTB','PSX','DPX','DPA','DPB','DPR','DPN', 'TROSEK', 'TDPK', 'mr'};
 ptb = dp1m + psm;
 values = { ptb,  psm, dp1m, dpa, dpb, dpr, dpn, tempm, tdpk, mr};
 DATA = cell2struct(values, names, 2);
 % Compute fcoef and pcor
-[pcor,fcoef,betaf0,betaf] = do_fcalc0(DATA,PRESSURE,'Plots',false);
+%[pcor,fcoef,betaf0,betaf] = do_fcalc0(DATA,PRESSURE,'Plots',true);
+[pcor,fcoef] = cone_pcor(dp1m,dpb,dpa,dpr,psm,"SOURCE",PRESSURE);
+
+matfile=sprintf('e:/MATLAB-DATA2/kingair_data/test26/work/maneuvers_%s.mat',PRESSURE);
+save(matfile,"ptb", "psm", "dp1m", "dpa", "dpb", "dpr", "dpn", ...
+    "tempm","tdpk", "mr", "pcor", "fcoef");
+
+
+eval(sprintf("betaf_%s = BETAF0;",PRESSURE));
 sigma.ptb   = 0.1;
 sigma.psa   = 0.1;
 sigma.dp1   = 0.01;
@@ -365,9 +385,7 @@ sigma.dpn   = 0.01;
 sigma.fcoef = 0.01;
 sigma.tempm = 0.5;
 sigma.pcor  = 0.5;
-[f,qx1,pErr] = fcalc(betaf,DATA,sigma);
-%%%%%%[pcorX,fcoefX]=cone_pcor(dp1m,dpb,dpa,dpr,psm);
-%[pcorc1,fcoef1]=cone_pcor(DP1,DPB,DPA,DPR,PSA);
+
                 dp1m        = DATA.DPX;
                 dp1         = dp1m + pcor;
                 psm         = DATA.PSX;
@@ -376,6 +394,8 @@ sigma.pcor  = 0.5;
                 dpn         = DATA.DPN;
                 tempm       = DATA.TROSEK;
                 q_impact    = solve858(dp1, DATA.DPA, DATA.DPB, 'dpr', DATA.DPR);
+                OUT1        = r858_solve(ptb, psm, DATA.DPA, DATA.DPB, DATA.DPR, DATA.DPN,fcoef,pcor);
+                q_impact = OUT1.q;
                 pTotal      = q_impact + pmb;
                 r           = 0.97; % recovery coefficient for Temp
                 ADat        = airdata(pmb, pTotal, tempm, r, DATA.TDPK);
@@ -406,10 +426,13 @@ writetable(Tnew,xlsout,'Sheet',1,'Range','A1')
 
 ALL = 'All';
 DATE = extractBefore(FLTs{3},'_');
+P = PRESSURE
 % Plot results
-nn = 10*pppp;
+nn = 0
 nn=nn+1;
-figure(nn)
+figure(nn);
+s=sprintf("%s%s%s",'Maneuver_',P,num2str(nn));
+set(gcf,'Name',s,'NumberTitle','off')
 h=plot((1:length(fu))/orate,detrend([fw,fu,fv],'constant'))
 flight='Concat';
 jju=1:length(tas);
@@ -426,6 +449,9 @@ ss=sprintf('figs/Detrended-comps-%s-PS-%s.jpg',PRESSURE,ALL);
 saveas(gcf,ss,'jpg')
 
 nn=nn+1;
+figure(nn);
+s=sprintf("%s%s%s",'Maneuver_',P,num2str(nn));
+set(gcf,'Name',s,'NumberTitle','off')
 figure(nn)
 h=plot((1:length(jju))/orate,[alpha(jju),beta(jju)].*180./pi)
 set(h,'LineWidth',1)
@@ -439,7 +465,11 @@ ss=sprintf('figs/Flow angles-%s-PS-%s.jpg',PRESSURE,ALL);
 saveas(gcf,ss,'jpg')
 
 nn=nn+1;
-figure(nn)
+figure(nn);
+s=sprintf("%s%s%s",'Maneuver_',P,num2str(nn));
+set(gcf,'Name',s,'NumberTitle','off')
+s=sprintf("%s%s%s",'Maneuver_',P,num2str(nn));
+set(gcf,'Name',s,'NumberTitle','off')
 edges=linspace(-5,5,100);
 centers1=edges2centers(edges);
 edges1=edges(ones(3,1),:)';
@@ -469,9 +499,10 @@ grid
 ss=sprintf('figs/Resids_hist-%s-PS-%s.jpg',PRESSURE,ALL);
 saveas(gcf,ss,'jpg')
 
-
 nn=nn+1;
-figure(nn)
+figure(nn);
+s=sprintf("%s%s%s",'Maneuver_',P,num2str(nn));
+set(gcf,'Name',s,'NumberTitle','off')
 boxplot([fu,fv,fw],'notch','on','whisker',1,'Symbol','.' ...
     ,'Labels',{'East-component','North-component','Up-component'})
 ylabel('Wind residual [m/s]')
@@ -490,8 +521,10 @@ facts = ii;
 sz=size(beta_samp);
 bx=beta_samp./mean(beta_samp,1);
 
-nn = pppp*20;
-figure(nn)
+nn=nn+1;
+figure(nn);
+s=sprintf("%s%s%s",'Maneuver_',P,num2str(nn));
+set(gcf,'Name',s,'NumberTitle','off')
 boxplot(bx,"label",cols,'notch','on');
 title(sprintf('R858 factors divided by their mean (%s PS)',PRESSURE))
 grid
@@ -500,7 +533,7 @@ saveas(gcf,ss,'jpg')
 
 % Write out results 
 fid=fopen(["./maneuvers_" + PRESSURE + ".txt"],'w')
-fprintf(fid,                'AWinds.Maneuver_date= %s;\n','20260408');
+fprintf(fid,                'AWinds.Maneuver_date= %s;\n','SLCSOS26 composite');
 fprintf(fid,            'AWinds.RollOffsetRadians= %g;\n',Params(1));
 fprintf(fid,           'AWinds.PitchOffsetRadians= %g;\n',Params(2));
 fprintf(fid,            'AWinds.HeadOffsetRadians= %g;\n',Params(3));
@@ -512,5 +545,68 @@ fclose(fid)
 xlsout2=["resultsTable_" + PRESSURE + ".xlsx"];
 T_final=outputTable(structManeuvers,xlsout2);
 
+% values = { ptb,  psm, dp1m, dpa, dpb, dpr, dpn, tempm, tdpk, mr};
+Plots = true;
+rate=orate;
+if Plots
+    qx0 = q_beta(dp1m,dpa,dpb,dpr);
+    % OUT1 = r858_solve(ptb, psm, dpa, dpb, dpr, dpn, fcoef, pcor, sigma, 0.5);
+    [qx1, fcoef, ta_out, tb_out, sigma_q, sigma_f, res, stats] = ...;
+        solve858(dp1m, dpa, dpb, 'dpr', dpr, 'DPN', dpn, 'ptb_abs', ptb, ...
+           'sigma_dp', 0.1, 'sigma_pstatic', 0.5, ...
+           'f_sim', fcoef, 'ps_cor', pcor);  
+    nn=nn+1;
+    figure(nn)
+    s=sprintf("%s%s%s",'Maneuver_',P,num2str(nn));
+    set(gcf,'Name',s,'NumberTitle','off')
+    plot([1:numel(qx1)]./rate./60,pcor)
+    title(sprintf('%s STATIC',P))
+    xlabel('Time [minutes]')
+    ylabel('Pressure correction [hPa]')
+    v=axis;
+    axis([v(1) v(2) 0 5])
+    grid
+    ss=sprintf('figs/pcor-%s-PS-%s.jpg',PRESSURE,ALL);
+    saveas(gcf,ss,'jpg')
+
+    nn=nn+1;
+    figure(nn)
+    s=sprintf("%s%s%s",'Maneuver_',P,num2str(nn));
+    set(gcf,'Name',s,'NumberTitle','off')
+    plot([1:numel(qx1)]./rate./60,fcoef)
+    title(sprintf('%s STATIC',P))
+    xlabel('Time [minutes]')
+    ylabel('f coefficient [dim]')
+    v=axis;
+    axis([v(1) v(2) 1.6 1.75])
+    grid
+    ss=sprintf('figs/fcoef-%s-PS-%s.jpg',PRESSURE,ALL);
+    saveas(gcf,ss,'jpg')
+    
+    nn=nn+1;
+    dpkor_df = d_pkor_d_f(qx1,ta_out,tb_out);
+    figure(nn)
+    s=sprintf("%s%s%s",'Maneuver_',P,num2str(nn));
+    set(gcf,'Name',s,'NumberTitle','off')
+    plot(qx1,dpkor_df*0.1.*fcoef,'.');
+    title(sprintf('%s STATIC',P))
+    xlabel('q\_impact [hPa]')
+    ylabel('Dpcor/Df [hPa]')
+    v=axis;
+    yy=v(4) - (v(4)-v(3))*.1;
+    h=text(v(1)*1.1,yy,'Dpcor / Dfcoef for 10% offset in fcoef');
+    set(h,'fontsize',12,'fontweight','bold')
+    %axis([v(1) v(2) 1.6 1.75])
+    grid
+    ss=sprintf('figs/dpkor_df-%s-PS-%s.jpg',PRESSURE,ALL);
+    saveas(gcf,ss,'jpg')
+
+
+end
+
 end ; %pppp
+
+
+
+
 

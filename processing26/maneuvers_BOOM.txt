@@ -1,7 +1,7 @@
-AWinds.Maneuver_date= 20260408;
+AWinds.Maneuver_date= SLCSOS26 composite;
 AWinds.RollOffsetRadians= 0.0174533;
-AWinds.PitchOffsetRadians= -0.000532905;
-AWinds.HeadOffsetRadians= -0.000528422;
-AWinds.AttackFactor= 0.770187, -0.020666 ;
-AWinds.SideslipFactor= 0.770599, 0.0049546;
-AWinds.PStaticOffset= -1.32838;
+AWinds.PitchOffsetRadians= -0.00089246;
+AWinds.HeadOffsetRadians= -0.000259093;
+AWinds.AttackFactor= 0.769205, -0.0210172 ;
+AWinds.SideslipFactor= 0.780111, 0.00537076;
+AWinds.PStaticOffset= -2.51385;
