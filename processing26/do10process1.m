@@ -219,7 +219,7 @@ for jj = 1:numel(FLTs)
         end
         % Compute fcoef and pcor
         %%[pcorc,fcoef,betaf0,betaf] = do_fcalc0(DATA,PRESSURE,'Plots',false);
-        [pcorc,fcoef] = cone_pcor(DATA0.DPX,DATA0.DPB,DATA0.DPA,DATA0.DPR,DATA0.PSX,'SOURCE',PRESSURE);
+        [pcorc,fcoef] = cone_pcor(DATA0.DPX,DATA0.DPB,DATA0.DPA,DATA0.DPR,DATA0.PSX,'dpn',DATA0.DPN,'Rate',orate);
 
         switch PRESSURE
             case 'SHIP'
@@ -367,7 +367,7 @@ values = { ptb,  psm, dp1m, dpa, dpb, dpr, dpn, tempm, tdpk, mr};
 DATA = cell2struct(values, names, 2);
 % Compute fcoef and pcor
 %[pcor,fcoef,betaf0,betaf] = do_fcalc0(DATA,PRESSURE,'Plots',true);
-[pcor,fcoef] = cone_pcor(dp1m,dpb,dpa,dpr,psm,"SOURCE",PRESSURE);
+[pcor,fcoef] = cone_pcor(dp1m,dpb,dpa,dpr,psm,'dpn',dpn,'Rate',orate);
 
 matfile=sprintf('e:/MATLAB-DATA2/kingair_data/test26/work/maneuvers_%s.mat',PRESSURE);
 save(matfile,"ptb", "psm", "dp1m", "dpa", "dpb", "dpr", "dpn", ...
